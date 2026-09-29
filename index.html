@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>fucksynth's lyric studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+:root{color-scheme:light;--bg:#efeeea;--panel:#fff;--ink:#171717;--mute:#737373;--line:#d4d4d4;--seg:#f5f5f5;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+aside{background:var(--panel);border-color:var(--line)}
+.display{font-family:'Bricolage Grotesque',system-ui,sans-serif}
+.mute{color:var(--mute)}
+.fld{margin-top:.375rem;width:100%;border-radius:.5rem;border:1px solid var(--line);background:transparent;color:var(--ink);padding:.625rem .75rem;font-size:.875rem}
+.seg{margin-top:.375rem;display:grid;gap:.25rem;border-radius:.75rem;background:var(--seg);padding:.25rem;font-size:.875rem}
+.seg button{border-radius:.5rem;padding:.5rem .25rem;color:var(--mute);font-weight:500;transition:all .15s}
+.seg button.on{background:#fff;color:#111;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.dz{margin-top:.375rem;display:flex;align-items:center;gap:1rem;border-radius:.75rem;border:2px dashed var(--line);padding:.75rem;cursor:pointer}
+.dz.over{border-color:#2f5bea;background:#eef2ff}
+input:focus,textarea:focus,.dz:focus{outline:2px solid #2f5bea;outline-offset:2px}
+#poster{position:relative;overflow:hidden;box-sizing:border-box;font-family:'DM Sans',sans-serif}
+#poster .t{font-family:'Bricolage Grotesque',sans-serif;letter-spacing:-.03em;line-height:1.05;font-weight:800}
+</style>
+</head>
+<body>
+<div class="lg:flex lg:h-screen">
+<aside class="lg:w-[420px] lg:shrink-0 lg:overflow-y-auto p-6 sm:p-8 space-y-6 border-b lg:border-b-0 lg:border-r">
+<header>
+<div class="flex items-center justify-between gap-3"><h1 class="display text-2xl font-extrabold tracking-tight">fucksynth's lyric studio</h1>
+<a href="https://fucksynth.github.io/album-studio/" target="_blank" rel="noopener noreferrer" class="shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap" style="border-color:var(--line);color:var(--ink)">album studio →</a></div>
+<p class="text-sm mute mt-1">add quote from song lyrics and cover, then download a poster.</p>
+</header>
+<label class="block"><span class="text-sm font-medium">input some quotes here</span>
+<textarea id="quote" rows="5" class="fld" placeholder="some"></textarea></label>
+<label class="block"><span class="text-sm font-medium">song name</span><input id="song" class="fld"></label>
+<label class="block"><span class="text-sm font-medium">artist</span><input id="artist" class="fld"></label>
+<div>
+<span class="text-sm font-medium">cover</span>
+<div id="dz" tabindex="0" class="dz">
+<img id="thumb" alt="" class="w-16 h-16 rounded-lg object-cover" style="background:var(--seg)">
+<div class="text-sm"><p class="font-medium">drag picture or click</p><p class="mute">jpg, png or webp</p></div>
+<input id="file" type="file" accept="image/*" class="hidden">
+</div>
+</div>
+<div><span class="text-sm font-medium">format</span><div id="seg-format" class="seg grid-cols-3"></div></div>
+<div><span class="text-sm font-medium">background</span><div id="seg-bg" class="seg grid-cols-3"></div>
+<div id="mono-wrap" class="hidden mt-3"><div id="seg-mono" class="seg grid-cols-2"></div></div></div>
+<div><span class="text-sm font-medium">allign</span><div id="seg-align" class="seg grid-cols-2"></div></div>
+<button id="dl" class="w-full rounded-xl bg-neutral-900 text-white py-3.5 text-sm font-semibold hover:bg-black disabled:opacity-60">save as .png</button>
+<p id="msg" class="text-sm text-red-600 min-h-[1.25rem]"></p>
+</aside>
+<main id="stage" class="flex-1 min-h-[70vh] lg:min-h-0 flex items-center justify-center p-5 sm:p-10 overflow-hidden">
+<div id="frame" class="relative shadow-2xl"><div id="scaler" style="transform-origin:top left;position:absolute;left:0;top:0"><div id="poster"></div></div></div>
+</main>
+</div>
+<script>
+const FORMATS={square:{label:'square',sub:'1:1',w:1080,h:1080},portrait:{label:'post',sub:'4:5',w:1080,h:1350},story:{label:'stories',sub:'9:16',w:1080,h:1920}};
+const state={format:'portrait',bg:'gradient',mono:'black',align:'left',img:null,colors:[[40,60,90],[200,120,90],[20,30,50]]};
+const $=id=>document.getElementById(id);
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rgb=c=>'rgb('+c.join(',')+')';
+const lum=c=>(0.2126*c[0]+0.7152*c[1]+0.0722*c[2])/255;
+function seg(id,key,opts){const el=$(id);
+el.innerHTML=opts.map(o=>`<button type="button" data-v="${o[0]}">${o[1]}</button>`).join('');
+el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state[key]=b.dataset.v;sync();render();});}
+function sync(){[['seg-format','format'],['seg-bg','bg'],['seg-mono','mono'],['seg-align','align']].forEach(p=>{
+$(p[0]).querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===state[p[1]]));});
+$('mono-wrap').classList.toggle('hidden',state.bg!=='mono');}
+seg('seg-format','format',Object.keys(FORMATS).map(k=>[k,FORMATS[k].label+' <span style="opacity:.6">'+FORMATS[k].sub+'</span>']));
+seg('seg-bg','bg',[['dominant','dominant'],['gradient','gradient'],['mono','mono']]);
+seg('seg-mono','mono',[['black','black'],['white','white']]);
+seg('seg-align','align',[['left','left'],['center','center']]);
+
+function extractColors(img){const N=56,c=document.createElement('canvas');c.width=c.height=N;
+const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,N,N);
+const d=ctx.getImageData(0,0,N,N).data,bk={};
+for(let i=0;i<d.length;i+=4){if(d[i+3]<128)continue;const r=d[i],g=d[i+1],b=d[i+2];
+const k=(r>>4)<<8|(g>>4)<<4|(b>>4);const B=bk[k]||(bk[k]={n:0,r:0,g:0,b:0});B.n++;B.r+=r;B.g+=g;B.b+=b;}
+const list=Object.values(bk).map(B=>{const col=[B.r/B.n,B.g/B.n,B.b/B.n].map(Math.round);
+const mx=Math.max(...col),mn=Math.min(...col),sat=mx?(mx-mn)/mx:0,l=lum(col);
+let s=B.n*(0.35+sat);if(l<0.07||l>0.94)s*=0.25;return{col,s};}).sort((a,b)=>b.s-a.s);
+const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]),out=[];
+for(const it of list){if(out.every(o=>dist(o,it.col)>90))out.push(it.col);if(out.length==3)break;}
+const base=out[0]||[60,60,60];
+while(out.length<3)out.push(out.length==1?base.map(v=>Math.min(255,v+60)):base.map(v=>Math.round(v*.55)));
+return out;}
+
+function makeBackdrop(img,cols){const W=270,H=480,c=document.createElement('canvas');c.width=W;c.height=H;
+const ctx=c.getContext('2d'),g=ctx.createLinearGradient(0,0,W*.4,H);
+g.addColorStop(0,rgb(cols[1]));g.addColorStop(.5,rgb(cols[0]));g.addColorStop(1,rgb(cols[2]));
+ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+const t=document.createElement('canvas');t.width=t.height=10;t.getContext('2d').drawImage(img,0,0,10,10);
+ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.globalAlpha=.5;
+ctx.drawImage(t,-H*.2,0,H*1.4,H);return c.toDataURL('image/jpeg',.92);}
+
+function render(){
+const f=FORMATS[state.format],p=$('poster');
+const quote=$('quote').value.trim()||'quote here';
+const song=esc($('song').value.trim()||'song name');
+const artist=esc($('artist').value.trim()||'artist');
+let bgCss,avg;
+if(state.bg=='dominant'){avg=state.colors[0];bgCss='background:'+rgb(avg);}
+else if(state.bg=='gradient'){const u=state.img?makeBackdrop(state.img,state.colors):'';
+bgCss=`background:${rgb(state.colors[0])} url(${u}) center/cover no-repeat`;
+avg=state.colors[0].map((v,i)=>(v+state.colors[1][i]+state.colors[2][i])/3);}
+else{avg=state.mono=='black'?[0,0,0]:[255,255,255];bgCss='background:'+rgb(avg);}
+const dark=lum(avg)<.55,ink=dark?'#fff':'#0a0a0a',soft=dark?'rgba(255,255,255,.62)':'rgba(0,0,0,.55)';
+const cover=state.img?`background:url(${state.img.src}) center/cover`:'background:#888';
+const pad=state.format=='square'?84:96,cs=state.format=='story'?247:state.format=='portrait'?195:156;
+const len=quote.length,area=(f.w-pad*2)*(f.h-pad*2-cs-260);
+let fs=Math.sqrt(area/(len*1.35))*0.95;fs=Math.max(34,Math.min(fs,state.format=='story'?120:104));
+const al=state.align,ctr=al=='center';
+const lines=esc(quote).replace(/\n/g,'<br>');
+p.style.cssText=`width:${f.w}px;height:${f.h}px;padding:${pad}px;color:${ink};${bgCss}`;
+p.innerHTML=`<div style="display:flex;flex-direction:column;height:100%;text-align:${al}">
+<div style="display:flex;justify-content:${ctr?'center':'flex-start'}"><div style="width:${cs}px;height:${cs}px;border-radius:8px;${cover};box-shadow:0 30px 60px -20px rgba(0,0,0,${dark?.55:.3})"></div></div>
+<div style="flex:1;display:flex;align-items:center;min-height:0"><div class="t" style="width:100%;font-size:${Math.round(fs)}px;overflow-wrap:anywhere">${lines}</div></div>
+<div><div style="font-size:${Math.round(fs*.55>44?44:Math.max(28,fs*.55))}px;font-weight:600">${song}</div>
+<div style="margin-top:8px;font-size:30px;font-weight:500;color:${soft}">${artist}</div></div></div>`;
+fit();}
+
+function fit(){const f=FORMATS[state.format],st=$('stage'),cs=getComputedStyle(st);
+const aw=st.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+const ah=innerWidth>=1024?st.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom):Infinity;
+const s=Math.min(aw/f.w,ah/f.h,1);$('scaler').style.transform='scale('+s+')';
+$('frame').style.width=f.w*s+'px';$('frame').style.height=f.h*s+'px';}
+new ResizeObserver(fit).observe($('stage'));
+
+function setImage(src){const img=new Image();
+img.onload=()=>{state.img=img;state.colors=extractColors(img);$('thumb').src=src;$('msg').textContent='';render();};
+img.onerror=()=>{$('msg').textContent='unable to read this file extension. try jpg, png or webp.';};img.src=src;}
+function loadFile(file){if(!file||!file.type.startsWith('image/')){$('msg').textContent='chose file-pic (jpg, png or webp).';return;}
+const r=new FileReader();r.onload=()=>setImage(r.result);r.readAsDataURL(file);}
+const dz=$('dz');
+dz.addEventListener('click',()=>$('file').click());
+dz.addEventListener('keydown',e=>{if(e.key=='Enter'||e.key==' '){e.preventDefault();$('file').click();}});
+$('file').addEventListener('change',e=>loadFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
+dz.addEventListener('drop',e=>loadFile(e.dataTransfer.files[0]));
+
+function defaultCover(){const c=document.createElement('canvas');c.width=c.height=800;const x=c.getContext('2d');
+const bg=x.createLinearGradient(0,0,800,800);bg.addColorStop(0,'#0f3d4a');bg.addColorStop(1,'#0a1f2c');
+x.fillStyle=bg;x.fillRect(0,0,800,800);
+const gl=x.createRadialGradient(400,470,20,400,470,300);gl.addColorStop(0,'#ffd9a0');gl.addColorStop(.45,'#ff7a59');gl.addColorStop(1,'rgba(255,122,89,0)');
+x.fillStyle=gl;x.fillRect(0,0,800,800);x.fillStyle='#ffe9c4';x.beginPath();x.arc(400,470,150,0,Math.PI*2);x.fill();
+x.fillStyle='#0a1f2c';x.fillRect(0,560,800,240);return c.toDataURL('image/png');}
+
+$('dl').addEventListener('click',async()=>{const btn=$('dl'),f=FORMATS[state.format];
+if(typeof html2canvas=='undefined'){$('msg').textContent='export lib err, reload page';return;}
+btn.disabled=true;btn.textContent='rendering...';$('msg').textContent='';
+try{await document.fonts.ready;
+const canvas=await html2canvas($('poster'),{scale:2,useCORS:true,backgroundColor:null,logging:false,width:f.w,height:f.h,
+onclone:d=>{d.getElementById('scaler').style.transform='none';}});
+const slug=s=>s.toLowerCase().replace(/[^a-z0-9а-яё]+/g,'-').replace(/^-|-$/g,'');
+const a=document.createElement('a');a.download=(slug($('artist').value)||'artist')+'-'+(slug($('song').value)||'quote')+'-'+state.format+'.png';
+a.href=canvas.toDataURL('image/png');a.click();}
+catch(e){console.error(e);$('msg').textContent='unable to export: try to choose pic with lower res';}
+finally{btn.disabled=false;btn.textContent='save as .png';}});
+
+['quote','song','artist'].forEach(id=>$(id).addEventListener('input',render));
+sync();setImage(defaultCover());
+if(document.fonts)document.fonts.ready.then(render);
+</script>
+</body>
+</html>
